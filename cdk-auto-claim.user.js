@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         CDK 福利自动领取
 // @namespace    http://tampermonkey.net/
-// @version      4.3.0
+// @version      4.4.0
 // @description  自动扫描linux.do站内CDK链接，倒计时提醒，自动跳转并点击领取
 // @author       A嘉技术
 // @match        https://linux.do/*
 // @match        https://cdk.linux.do/*
+// @updateURL    https://github.com/Aixgeekx/Linux-do-CDK-/raw/main/cdk-auto-claim.user.js
+// @downloadURL  https://github.com/Aixgeekx/Linux-do-CDK-/raw/main/cdk-auto-claim.user.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
@@ -17,10 +19,11 @@
 (function() {
     'use strict';
 
-    const VERSION = '4.3.0';
+    const VERSION = '4.4.0';
+    const UPDATE_URL = 'https://github.com/Aixgeekx/Linux-do-CDK-/raw/main/cdk-auto-claim.user.js';
     const CFG = {
         cdkPattern: /https?:\/\/cdk\.linux\.do\/receive\/[\w-]+/g,  // 匹配CDK链接
-        scanInterval: 60000,    // 扫描间隔60秒
+        scanInterval: (GM_getValue('cdk_scan_interval', 60) || 60) * 1000, // 扫描间隔秒数
         preJumpSec: 5,          // 提前跳转秒数
         claimSelectors: [       // CDK页面领取按钮选择器
             'button.h-9.w-full.rounded-full:not([disabled]):not(.cursor-not-allowed)',
@@ -106,6 +109,8 @@
         @keyframes cdk-dot{0%,100%{opacity:1}50%{opacity:.3}}
         .cdk-notice{background:#FFF3CD;border:1px solid #FFE69C;border-radius:4px;padding:8px;margin-bottom:10px;font-size:11px;color:#856404}
         .cdk-notice b{display:block;margin-bottom:3px}
+        #cdk-update-box{display:none;background:#E3F2FD;border:1px solid #90CAF9;border-radius:4px;padding:8px;margin-bottom:8px;font-size:11px;color:#0D47A1}
+        #cdk-update-box a{color:#1565C0;text-decoration:underline;font-weight:bold}
         .cdk-btn-sm{background:#2196F3;color:#fff;border:none;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px}
         .cdk-btn-sm:hover{background:#1976D2}
         .cdk-btn-sm.orange{background:#FF9800}.cdk-btn-sm.orange:hover{background:#F57C00}
@@ -161,10 +166,11 @@
         </div>
         <div id="cdk-body">
             <div class="cdk-notice">
-                <b>💡 自动扫描中</b>
-                每60秒扫描站内CDK帖子，发现新CDK自动提醒。<br>
+                <b>💡 扫描默认关闭</b>
+                可手动扫描，或输入秒数后点击「开始自动」。<br>
                 到点自动跳转并点击「立即领取」。hCaptcha需手动验证。
             </div>
+            <div id="cdk-update-box"></div>
             <div id="cdk-tabs">
                 <div class="cdk-tab active" data-tab="scan">🔍 扫描结果</div>
                 <div class="cdk-tab" data-tab="list">📋 我的提醒</div>
@@ -176,16 +182,16 @@
                 <div class="cdk-sort-bar">
                     <label>排序:</label>
                     <select id="cdk-sort-mode">
-                        <option value="cdk-asc">CDK时间 ↑</option>
-                        <option value="cdk-desc">CDK时间 ↓</option>
-                        <option value="post-asc">发帖时间 ↑</option>
-                        <option value="post-desc">发帖时间 ↓</option>
-                        <option value="found-desc">发现时间 ↓</option>
-                        <option value="found-asc">发现时间 ↑</option>
+                        <option value="cdk-asc" ${GM_getValue('cdk_sort_mode', 'cdk-asc') === 'cdk-asc' ? 'selected' : ''}>CDK时间 ↑</option>
+                        <option value="cdk-desc" ${GM_getValue('cdk_sort_mode', 'cdk-asc') === 'cdk-desc' ? 'selected' : ''}>CDK时间 ↓</option>
+                        <option value="post-asc" ${GM_getValue('cdk_sort_mode', 'cdk-asc') === 'post-asc' ? 'selected' : ''}>发帖时间 ↑</option>
+                        <option value="post-desc" ${GM_getValue('cdk_sort_mode', 'cdk-asc') === 'post-desc' ? 'selected' : ''}>发帖时间 ↓</option>
+                        <option value="found-desc" ${GM_getValue('cdk_sort_mode', 'cdk-asc') === 'found-desc' ? 'selected' : ''}>发现时间 ↓</option>
+                        <option value="found-asc" ${GM_getValue('cdk_sort_mode', 'cdk-asc') === 'found-asc' ? 'selected' : ''}>发现时间 ↑</option>
                     </select>
                     <button class="cdk-btn-sm orange" id="cdk-scan-manual">手动扫描</button>
                     <button class="cdk-btn-sm" id="cdk-scan-toggle" style="background:#4CAF50">开始自动</button>
-                    <input type="text" id="cdk-scan-interval" value="60" style="width:40px;padding:2px 4px;font-size:11px;border:1px solid #ddd;border-radius:3px;text-align:center" placeholder="秒"> <span style="font-size:11px;color:#888">秒</span>
+                    <input type="text" id="cdk-scan-interval" value="${Math.floor(CFG.scanInterval/1000)}" style="width:40px;padding:2px 4px;font-size:11px;border:1px solid #ddd;border-radius:3px;text-align:center" placeholder="秒"> <span style="font-size:11px;color:#888">秒</span>
                 </div>
                 <div id="cdk-scan-log"></div>
                 <div id="cdk-scan-list"><div class="cdk-empty">扫描中...</div></div>
@@ -273,6 +279,22 @@
             return d;
         }
         return null;
+    }
+    function cmpVer(a,b) {
+        const x=a.split('.').map(Number), y=b.split('.').map(Number);
+        for (let i=0;i<Math.max(x.length,y.length);i++) if ((x[i]||0)!==(y[i]||0)) return (x[i]||0)-(y[i]||0);
+        return 0;
+    }
+    async function checkUpdate() {
+        try {
+            const resp = await fetch(UPDATE_URL + '?t=' + Date.now(), {cache:'no-store'});
+            const text = await resp.text();
+            const m = text.match(/\/\/\s*@version\s+([\d.]+)/);
+            if (!m || cmpVer(m[1], VERSION) <= 0) return;
+            const box = document.getElementById('cdk-update-box');
+            if (box) { box.style.display = 'block'; box.innerHTML = `发现新版 v${m[1]}，当前 v${VERSION}。<a href="${UPDATE_URL}" target="_blank">点击更新脚本</a>`; }
+            consoleLog(`发现新版 v${m[1]}，当前 v${VERSION}`, 'warn');
+        } catch(e) { consoleLog(`检查更新失败: ${e.message}`, 'warn'); }
     }
 
     // ===== 数据管理 =====
@@ -632,7 +654,7 @@
     });
 
     // ===== 排序切换 =====
-    document.getElementById('cdk-sort-mode')?.addEventListener('change', updateScanUI);
+    document.getElementById('cdk-sort-mode')?.addEventListener('change', e => { GM_setValue('cdk_sort_mode', e.target.value); updateScanUI(); });
 
     // ===== 主循环 =====
     renderList();
@@ -646,8 +668,10 @@
     scanToggleBtn?.addEventListener('click', () => {
         scanRunning = !scanRunning;
         if (scanRunning) {
-            const sec = parseInt(document.getElementById('cdk-scan-interval')?.value) || 60;
+            const sec = Math.max(5, parseInt(document.getElementById('cdk-scan-interval')?.value) || 60);
             CFG.scanInterval = sec * 1000;
+            GM_setValue('cdk_scan_interval', sec);
+            document.getElementById('cdk-scan-interval').value = sec;
             scanAll();
             scanIntervalId = setInterval(scanAll, CFG.scanInterval);
             scanToggleBtn.textContent = '停止自动';
@@ -664,4 +688,5 @@
 
     consoleLog(`CDK Auto v${VERSION} 已加载`, 'success');
     consoleLog(`扫描间隔: ${CFG.scanInterval/1000}秒 | 提前跳转: ${CFG.preJumpSec}秒`, 'info');
+    setTimeout(checkUpdate, 3000);
 })();
