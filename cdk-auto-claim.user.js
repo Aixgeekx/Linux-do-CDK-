@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CDK 福利自动领取
 // @namespace    http://tampermonkey.net/
-// @version      4.1.0
+// @version      4.2.0
 // @description  自动扫描linux.do站内CDK链接，倒计时提醒，自动跳转并点击领取
 // @author       A嘉技术
 // @match        https://linux.do/*
@@ -17,10 +17,10 @@
 (function() {
     'use strict';
 
-    const VERSION = '4.1.0';
+    const VERSION = '4.2.0';
     const CFG = {
         cdkPattern: /https?:\/\/cdk\.linux\.do\/receive\/[\w-]+/g,  // 匹配CDK链接
-        scanInterval: 10000,    // 扫描间隔10秒
+        scanInterval: 60000,    // 扫描间隔60秒
         preJumpSec: 5,          // 提前跳转秒数
         claimSelectors: [       // CDK页面领取按钮选择器
             'button.h-9.w-full.rounded-full:not([disabled]):not(.cursor-not-allowed)',
@@ -131,6 +131,15 @@
         .cdk-item-del:hover{background:#d32f2f}
         .cdk-empty{text-align:center;color:#999;padding:15px;font-size:13px}
         #cdk-scan-log{font-size:10px;color:#666;max-height:50px;overflow-y:auto;margin-bottom:6px;background:#f5f5f5;padding:3px 5px;border-radius:3px;display:none}
+        .cdk-sort-bar{display:flex;gap:6px;margin-bottom:8px;align-items:center}
+        .cdk-sort-bar label{font-size:11px;color:#666}
+        .cdk-sort-bar select{font-size:11px;padding:2px 4px;border:1px solid #ddd;border-radius:3px}
+        #cdk-console-log{font-size:10px;font-family:Consolas,monospace;color:#333;max-height:300px;overflow-y:auto;background:#1e1e1e;color:#d4d4d4;padding:8px;border-radius:4px;line-height:1.6}
+        #cdk-console-log .log-info{color:#4FC1FF}#cdk-console-log .log-warn{color:#CCA700}#cdk-console-log .log-error{color:#F44336}#cdk-console-log .log-success{color:#4CAF50}#cdk-console-log .log-time{color:#888;margin-right:4px}
+        #cdk-console-ctrls{display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center}
+        #cdk-console-ctrls label{font-size:11px;color:#666;display:flex;align-items:center;gap:3px}
+        #cdk-console-ctrls input[type="checkbox"]{margin:0}
+        #cdk-console-filter{font-size:11px;padding:2px 6px;border:1px solid #ddd;border-radius:3px;width:120px}
     `;
     const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
 
@@ -153,22 +162,45 @@
         <div id="cdk-body">
             <div class="cdk-notice">
                 <b>💡 自动扫描中</b>
-                每10秒扫描站内CDK帖子，发现新CDK自动提醒。<br>
+                每60秒扫描站内CDK帖子，发现新CDK自动提醒。<br>
                 到点自动跳转并点击「立即领取」。hCaptcha需手动验证。
             </div>
             <div id="cdk-tabs">
                 <div class="cdk-tab active" data-tab="scan">🔍 扫描结果</div>
                 <div class="cdk-tab" data-tab="list">📋 我的提醒</div>
+                <div class="cdk-tab" data-tab="console">🖥️ 控制台</div>
                 <div class="cdk-tab" data-tab="add">➕ 手动添加</div>
             </div>
             <div class="cdk-tab-content active" data-tab="scan">
                 <div id="cdk-scan-status"><span id="cdk-scan-dot"></span> 等待首次扫描... <span id="cdk-scan-time"></span></div>
-                <div style="margin-bottom:6px"><button class="cdk-btn-sm orange" id="cdk-scan-manual">手动扫描</button></div>
+                <div class="cdk-sort-bar">
+                    <label>排序:</label>
+                    <select id="cdk-sort-mode">
+                        <option value="cdk-asc">CDK时间 ↑</option>
+                        <option value="cdk-desc">CDK时间 ↓</option>
+                        <option value="post-asc">发帖时间 ↑</option>
+                        <option value="post-desc">发帖时间 ↓</option>
+                        <option value="found-desc">发现时间 ↓</option>
+                        <option value="found-asc">发现时间 ↑</option>
+                    </select>
+                    <button class="cdk-btn-sm orange" id="cdk-scan-manual">手动扫描</button>
+                    <button class="cdk-btn-sm" id="cdk-scan-toggle" style="background:#4CAF50">开始自动</button>
+                    <input type="text" id="cdk-scan-interval" value="60" style="width:40px;padding:2px 4px;font-size:11px;border:1px solid #ddd;border-radius:3px;text-align:center" placeholder="秒"> <span style="font-size:11px;color:#888">秒</span>
+                </div>
                 <div id="cdk-scan-log"></div>
                 <div id="cdk-scan-list"><div class="cdk-empty">扫描中...</div></div>
             </div>
             <div class="cdk-tab-content" data-tab="list">
                 <div id="cdk-list"></div>
+            </div>
+            <div class="cdk-tab-content" data-tab="console">
+                <div id="cdk-console-ctrls">
+                    <button class="cdk-btn-sm" id="cdk-console-clear">清空</button>
+                    <button class="cdk-btn-sm orange" id="cdk-console-export">导出日志</button>
+                    <input type="text" id="cdk-console-filter" placeholder="过滤关键词...">
+                    <label><input type="checkbox" id="cdk-console-auto-scroll" checked> 自动滚动</label>
+                </div>
+                <div id="cdk-console-log"></div>
             </div>
             <div class="cdk-tab-content" data-tab="add">
                 <div class="cdk-fg"><label>CDK 名称</label><input type="text" id="cdk-name" placeholder="例如：Cursor Pro Token"></div>
@@ -268,10 +300,70 @@
     let scanPending = false;
     let scanCount = 0;
 
+    // ===== 控制台日志系统 =====
+    const consoleLogs = [];
+    const LOG_MAX = 500;
+    const logLevels = {info:'log-info', warn:'log-warn', error:'log-error', success:'log-success'};
+
+    function consoleLog(msg, level='info') {
+        const ts = new Date().toLocaleTimeString('zh-CN');
+        const entry = {ts, msg, level};
+        consoleLogs.push(entry);
+        if (consoleLogs.length > LOG_MAX) consoleLogs.shift();
+        renderConsoleLog(entry);
+        // 同步到浏览器控制台
+        const fn = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log';
+        console[fn](`[CDK ${ts}] ${msg}`);
+    }
+
+    function renderConsoleLog(entry) {
+        const el = document.getElementById('cdk-console-log');
+        if (!el) return;
+        const cls = logLevels[entry.level] || 'log-info';
+        const div = document.createElement('div');
+        div.dataset.level = entry.level;
+        div.innerHTML = `<span class="log-time">[${entry.ts}]</span><span class="${cls}">${escHtml(entry.msg)}</span>`;
+        // 过滤
+        const filter = document.getElementById('cdk-console-filter')?.value?.trim().toLowerCase();
+        if (filter && !entry.msg.toLowerCase().includes(filter)) div.style.display = 'none';
+        el.appendChild(div);
+        const autoScroll = document.getElementById('cdk-console-auto-scroll');
+        if (!autoScroll || autoScroll.checked) el.scrollTop = el.scrollHeight;
+    }
+
+    function renderAllConsoleLogs() {
+        const el = document.getElementById('cdk-console-log');
+        if (!el) return;
+        const filter = document.getElementById('cdk-console-filter')?.value?.trim().toLowerCase();
+        el.innerHTML = consoleLogs.map(e => {
+            const cls = logLevels[e.level] || 'log-info';
+            const hidden = filter && !e.msg.toLowerCase().includes(filter) ? ' style="display:none"' : '';
+            return `<div data-level="${e.level}"${hidden}><span class="log-time">[${e.ts}]</span><span class="${cls}">${escHtml(e.msg)}</span></div>`;
+        }).join('');
+        el.scrollTop = el.scrollHeight;
+    }
+
+    // 控制台按钮事件
+    document.getElementById('cdk-console-clear')?.addEventListener('click', () => {
+        consoleLogs.length = 0;
+        const el = document.getElementById('cdk-console-log');
+        if (el) el.innerHTML = '';
+    });
+    document.getElementById('cdk-console-export')?.addEventListener('click', () => {
+        const text = consoleLogs.map(e => `[${e.ts}] [${e.level.toUpperCase()}] ${e.msg}`).join('\n');
+        const blob = new Blob([text], {type:'text/plain'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `cdk-log-${new Date().toISOString().slice(0,10)}.txt`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    });
+    document.getElementById('cdk-console-filter')?.addEventListener('input', renderAllConsoleLogs);
+
     function log(msg) {
         const el = document.getElementById('cdk-scan-log');
         if (el) { el.style.display = 'block'; el.innerHTML += `<div>${msg}</div>`; el.scrollTop = el.scrollHeight; }
-        console.log(`[CDK] ${msg}`);
+        consoleLog(msg, 'info');
     }
 
     function setStatus(msg) {
@@ -293,7 +385,8 @@
     // 添加扫描结果（去重）
     function addResult(cdk, source) {
         if (!mgr.hasUrl(cdk.url) && !scanResults.some(r => r.url === cdk.url)) {
-            scanResults.push({...cdk, source});
+            scanResults.push({...cdk, source, foundAt: Date.now()});
+            consoleLog(`发现: ${cdk.name} - ${cdk.url} (${source})`, 'success');
             log(`发现: ${cdk.url} (${source})`);
         }
     }
@@ -331,34 +424,40 @@
     async function fetchTopic(id, title, topicCreatedAt) {
         try {
             const data = await safeFetch(`/t/${id}.json`);
-            (data.post_stream?.posts||[]).slice(0,3).forEach(p => {
+            const posts = (data.post_stream?.posts||[]).slice(0,3);
+            let found = 0;
+            posts.forEach(p => {
                 if (p.cooked) {
                     extractCDKs(p.cooked, title).forEach(cdk => {
-                        cdk.postTime = p.created_at || topicCreatedAt || null; // 帖子发表时间
+                        cdk.postTime = p.created_at || topicCreatedAt || null;
                         cdk.topicId = id;
                         addResult(cdk, '话题详情');
+                        found++;
                     });
                 }
             });
-        } catch(e) {}
+            if (found) consoleLog(`话题 #${id} "${title}" 发现 ${found} 个CDK`, 'success');
+        } catch(e) { consoleLog(`话题 #${id} 请求失败: ${e.message}`, 'warn'); }
     }
 
-    // 主扫描（每10秒持续执行）
+    // 主扫描（每60秒持续执行）
     async function scanAll() {
         if (scanPending) return;
         scanPending = true;
         scanCount++;
         setStatus(`第${scanCount}次扫描中...`);
+        consoleLog(`--- 第${scanCount}次扫描开始 ---`, 'info');
 
         // 1. 扫描当前页面DOM
         scanDOM();
 
         // 2. 搜索API
         try {
+            consoleLog('请求搜索API...', 'info');
             const data = await safeFetch('/search.json?q=cdk%20order%3Alatest');
             const topics = data.topics || [];
             const posts = data.posts || [];
-            log(`搜索: ${topics.length}话题, ${posts.length}帖子`);
+            consoleLog(`搜索结果: ${topics.length}话题, ${posts.length}帖子`, 'info');
             posts.forEach(p => {
                 if (!p.blurb) return;
                 const t = topics.find(x => x.id === p.topic_id);
@@ -373,23 +472,39 @@
                 const t = topics.find(x => x.id === id);
                 await fetchTopic(id, t?.title, t?.created_at);
             }
-        } catch(e) { log(`搜索失败: ${e.message}`); }
+        } catch(e) { consoleLog(`搜索API失败: ${e.message}`, 'error'); log(`搜索失败: ${e.message}`); }
 
         // 3. 福利板块
         for (const url of ['/c/welfare/36.json', '/c/welfare/welfare-lv2/61.json', '/c/welfare/welfare-lv1/60.json']) {
             try {
+                consoleLog(`请求 ${url.split('/').slice(-2).join('/')} ...`, 'info');
                 const data = await safeFetch(url);
                 const topics = (data.topic_list?.topics) || [];
-                log(`${url.split('/').slice(-2).join('/')}: ${topics.length}话题`);
+                consoleLog(`${url.split('/').slice(-2).join('/')}: ${topics.length}话题`, 'info');
                 for (const t of topics.slice(0, 5)) {
                     await fetchTopic(t.id, t.fancy_title || t.title, t.created_at);
                 }
-            } catch(e) { log(`${url} 失败: ${e.message}`); }
+            } catch(e) { consoleLog(`板块 ${url} 失败: ${e.message}`, 'error'); log(`${url} 失败: ${e.message}`); }
         }
 
         updateScanUI();
         scanPending = false;
-        setStatus(`扫描完成 · ${scanResults.length}个新CDK`);
+        const summary = `扫描完成 · 当前${scanResults.length}个新CDK · 累计发现${mgr.list.length + scanResults.length}个`;
+        setStatus(summary);
+        consoleLog(summary, scanResults.length > 0 ? 'success' : 'info');
+    }
+
+    // 扫描结果排序
+    function getSortFn(mode) {
+        switch(mode) {
+            case 'cdk-asc':  return (a,b) => (a.time||Infinity) - (b.time||Infinity);
+            case 'cdk-desc': return (a,b) => (b.time||0) - (a.time||0);
+            case 'post-asc': return (a,b) => (a.postTime?new Date(a.postTime).getTime():Infinity) - (b.postTime?new Date(b.postTime).getTime():Infinity);
+            case 'post-desc':return (a,b) => (b.postTime?new Date(b.postTime).getTime():0) - (a.postTime?new Date(a.postTime).getTime():0);
+            case 'found-asc':return (a,b) => (a.foundAt||0) - (b.foundAt||0);
+            case 'found-desc':return (a,b) => (b.foundAt||0) - (a.foundAt||0);
+            default: return (a,b) => (a.time||Infinity) - (b.time||Infinity);
+        }
     }
 
     // 更新扫描结果UI
@@ -403,7 +518,10 @@
             return;
         }
         if (cnt) { cnt.textContent = scanResults.length; cnt.style.display = 'inline'; }
-        el.innerHTML = scanResults.map((r, i) => {
+        const sortMode = document.getElementById('cdk-sort-mode')?.value || 'cdk-asc';
+        const sorted = [...scanResults].sort(getSortFn(sortMode));
+        el.innerHTML = sorted.map((r, i) => {
+            const origIdx = scanResults.indexOf(r);
             const timeStr = r.time ? new Date(r.time).toLocaleString('zh-CN') : '未识别到时间';
             const postStr = r.postTime ? new Date(r.postTime).toLocaleString('zh-CN') : '';
             return `<div class="cdk-scan-item">
@@ -413,7 +531,7 @@
                 ${postStr ? `<div class="time">📝 发帖时间: ${postStr}</div>` : ''}
                 ${r.topicId ? `<div class="time"><a href="https://linux.do/t/${r.topicId}" target="_blank" style="color:#2196F3;text-decoration:underline">🔗 查看帖子</a></div>` : ''}
                 <div class="actions">
-                    <button class="cdk-btn-sm cdk-add-btn" data-i="${i}">一键添加</button>
+                    <button class="cdk-btn-sm cdk-add-btn" data-i="${origIdx}">一键添加</button>
                     <button class="cdk-btn-sm" style="background:#999" onclick="this.closest('.cdk-scan-item').remove()">忽略</button>
                 </div>
             </div>`;
@@ -507,11 +625,37 @@
         scanAll();
     });
 
+    // ===== 排序切换 =====
+    document.getElementById('cdk-sort-mode')?.addEventListener('change', updateScanUI);
+
     // ===== 主循环 =====
     renderList();
-    setTimeout(scanAll, 3000);  // 首次扫描
+    let scanIntervalId = null;
+    let scanRunning = false;
+    const scanToggleBtn = document.getElementById('cdk-scan-toggle');
+    setStatus('等待手动开启扫描');
     setInterval(() => { renderList(); checkJump(); mgr.clean(); }, 1000);
-    setInterval(scanAll, CFG.scanInterval);  // 每10秒扫描
 
-    console.log(`[CDK Auto v${VERSION}] 已加载`);
+    // 开始/停止自动扫描
+    scanToggleBtn?.addEventListener('click', () => {
+        scanRunning = !scanRunning;
+        if (scanRunning) {
+            const sec = parseInt(document.getElementById('cdk-scan-interval')?.value) || 60;
+            CFG.scanInterval = sec * 1000;
+            scanAll();
+            scanIntervalId = setInterval(scanAll, CFG.scanInterval);
+            scanToggleBtn.textContent = '停止自动';
+            scanToggleBtn.style.background = '#F44336';
+            consoleLog(`自动扫描已开启，间隔${sec}秒`, 'success');
+        } else {
+            if (scanIntervalId) { clearInterval(scanIntervalId); scanIntervalId = null; }
+            scanToggleBtn.textContent = '开始自动';
+            scanToggleBtn.style.background = '#4CAF50';
+            consoleLog('自动扫描已停止', 'warn');
+            setStatus('扫描已停止');
+        }
+    });
+
+    consoleLog(`CDK Auto v${VERSION} 已加载`, 'success');
+    consoleLog(`扫描间隔: ${CFG.scanInterval/1000}秒 | 提前跳转: ${CFG.preJumpSec}秒`, 'info');
 })();
