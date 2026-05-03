@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CDK 福利自动领取
 // @namespace    http://tampermonkey.net/
-// @version      4.2.0
+// @version      4.3.0
 // @description  自动扫描linux.do站内CDK链接，倒计时提醒，自动跳转并点击领取
 // @author       A嘉技术
 // @match        https://linux.do/*
@@ -17,7 +17,7 @@
 (function() {
     'use strict';
 
-    const VERSION = '4.2.0';
+    const VERSION = '4.3.0';
     const CFG = {
         cdkPattern: /https?:\/\/cdk\.linux\.do\/receive\/[\w-]+/g,  // 匹配CDK链接
         scanInterval: 60000,    // 扫描间隔60秒
@@ -382,13 +382,20 @@
         });
     }
 
-    // 添加扫描结果（去重）
+    // 添加扫描结果（去重，保留最佳时间）
     function addResult(cdk, source) {
-        if (!mgr.hasUrl(cdk.url) && !scanResults.some(r => r.url === cdk.url)) {
-            scanResults.push({...cdk, source, foundAt: Date.now()});
-            consoleLog(`发现: ${cdk.name} - ${cdk.url} (${source})`, 'success');
-            log(`发现: ${cdk.url} (${source})`);
+        const exist = scanResults.find(r => r.url === cdk.url);
+        if (exist) {
+            // 如果新结果有更好的时间信息，更新
+            if (!exist.time && cdk.time) exist.time = cdk.time;
+            if (!exist.postTime && cdk.postTime) exist.postTime = cdk.postTime;
+            if (!exist.topicId && cdk.topicId) exist.topicId = cdk.topicId;
+            return;
         }
+        if (mgr.hasUrl(cdk.url)) return;
+        scanResults.push({...cdk, source, foundAt: Date.now()});
+        consoleLog(`发现: ${cdk.name} - ${cdk.url} (${source})`, 'success');
+        log(`发现: ${cdk.url} (${source})`);
     }
 
     // 扫描当前页面DOM
@@ -440,7 +447,7 @@
         } catch(e) { consoleLog(`话题 #${id} 请求失败: ${e.message}`, 'warn'); }
     }
 
-    // 主扫描（每60秒持续执行）
+    // 主扫描
     async function scanAll() {
         if (scanPending) return;
         scanPending = true;
@@ -621,7 +628,6 @@
 
     // ===== 手动扫描按钮 =====
     document.getElementById('cdk-scan-manual').addEventListener('click', () => {
-        scanResults = [];
         scanAll();
     });
 
