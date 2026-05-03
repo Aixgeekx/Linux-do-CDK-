@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CDK 福利自动领取
 // @namespace    http://tampermonkey.net/
-// @version      4.0.0
+// @version      4.1.0
 // @description  自动扫描linux.do站内CDK链接，倒计时提醒，自动跳转并点击领取
 // @author       A嘉技术
 // @match        https://linux.do/*
@@ -17,7 +17,7 @@
 (function() {
     'use strict';
 
-    const VERSION = '4.0.0';
+    const VERSION = '4.1.0';
     const CFG = {
         cdkPattern: /https?:\/\/cdk\.linux\.do\/receive\/[\w-]+/g,  // 匹配CDK链接
         scanInterval: 10000,    // 扫描间隔10秒
@@ -86,9 +86,9 @@
 
     // ===== 样式 =====
     const css = `
-        #cdk-panel{position:fixed;top:50%;transform:translateY(-50%);left:-340px;width:360px;max-height:60vh;background:#fff;border:2px solid #4CAF50;border-radius:0 8px 8px 0;box-shadow:4px 0 12px rgba(0,0,0,.15);z-index:10000;font-family:Arial,sans-serif;overflow:hidden;display:flex;flex-direction:column;transition:left .3s ease}
-        #cdk-panel.show{left:0}
-        #cdk-trigger{position:fixed;top:50%;left:0;width:30px;height:80px;background:#4CAF50;border-radius:0 8px 8px 0;z-index:9999;transform:translateY(-50%);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:13px;writing-mode:vertical-rl;box-shadow:2px 0 8px rgba(0,0,0,.2);transition:width .2s,background .2s}
+        #cdk-panel{position:fixed;top:50%;transform:translateY(-50%);right:-340px;width:360px;max-height:60vh;background:#fff;border:2px solid #4CAF50;border-radius:8px 0 0 8px;box-shadow:-4px 0 12px rgba(0,0,0,.15);z-index:10000;font-family:Arial,sans-serif;overflow:hidden;display:flex;flex-direction:column;transition:right .3s ease}
+        #cdk-panel.show{right:0}
+        #cdk-trigger{position:fixed;top:50%;right:0;width:30px;height:80px;background:#4CAF50;border-radius:8px 0 0 8px;z-index:9999;transform:translateY(-50%);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:13px;writing-mode:vertical-rl;box-shadow:-2px 0 8px rgba(0,0,0,.2);transition:width .2s,background .2s}
         #cdk-trigger:hover{width:35px;background:#45a049}
         #cdk-header{background:#4CAF50;color:#fff;padding:12px 15px;font-weight:bold;font-size:14px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
         #cdk-version{font-size:11px;opacity:.7;font-weight:normal;margin-left:6px}
@@ -411,6 +411,7 @@
                 <div class="url">${escHtml(r.url)}</div>
                 <div class="time">⏰ CDK时间: ${timeStr}</div>
                 ${postStr ? `<div class="time">📝 发帖时间: ${postStr}</div>` : ''}
+                ${r.topicId ? `<div class="time"><a href="https://linux.do/t/${r.topicId}" target="_blank" style="color:#2196F3;text-decoration:underline">🔗 查看帖子</a></div>` : ''}
                 <div class="actions">
                     <button class="cdk-btn-sm cdk-add-btn" data-i="${i}">一键添加</button>
                     <button class="cdk-btn-sm" style="background:#999" onclick="this.closest('.cdk-scan-item').remove()">忽略</button>
